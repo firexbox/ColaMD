@@ -6,3 +6,4 @@ release/
 .claude/
 *.env
 log.md
+deno.lock

@@ -1,5 +1,5 @@
 import { defineConfig } from 'electron-vite'
-import { resolve } from 'path'
+import { resolve } from 'node:path'
 
 export default defineConfig({
   main: {

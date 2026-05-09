@@ -42,7 +42,7 @@ mac:
 
 win:
   target:
-    - nsis
+    - zip
   icon: resources/icon.png
 
 linux:

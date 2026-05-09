@@ -1,22 +1,27 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
-import { join, basename, dirname, extname } from 'path'
+import { join, basename, dirname, extname } from 'node:path'
 import { readFile, writeFile, readdir, copyFile, mkdir } from 'fs/promises'
-import { watch, FSWatcher, existsSync, readdirSync, readFileSync, createServer } from 'fs'
+import { watch, FSWatcher, existsSync, readdirSync, readFileSync } from 'fs'
 import { IncomingMessage, ServerResponse } from 'http'
 import { createServer as createHttpServer } from 'http'
 
 // Custom themes directory
-const themesDir = join(app.getPath('home'), '.colamd', 'themes')
+let _themesDir: string | null = null
+function getThemesDir(): string {
+  if (!_themesDir) _themesDir = join(app.getPath('home'), '.colamd', 'themes')
+  return _themesDir
+}
 
 function ensureThemesDir(): void {
-  if (!existsSync(themesDir)) {
-    mkdir(themesDir, { recursive: true }).catch(() => {})
+  const dir = getThemesDir()
+  if (!existsSync(dir)) {
+    mkdir(dir, { recursive: true }).catch(() => {})
   }
 }
 
 async function scanCustomThemes(): Promise<string[]> {
   try {
-    const files = await readdir(themesDir)
+    const files = await readdir(getThemesDir())
     return files.filter(f => f.endsWith('.css')).sort()
   } catch {
     return []
@@ -337,7 +342,9 @@ ipcMain.handle('save-file', async (event, content: string) => {
           const dest = join(destDir, f)
           if (!existsSync(dest)) await copyFile(join(slidesTemplateDir, f), dest)
         }))
-      } catch { /* best effort */ }
+      } catch (err) {
+        console.error('[save-file] Failed to copy slides assets:', err)
+      }
     }
   }
   return saveToPath(win, state.filePath, content)
@@ -405,7 +412,7 @@ ipcMain.handle('export-html', async (event, htmlContent: string) => {
 
 const slidesTemplateDir = app.isPackaged
   ? join(process.resourcesPath, 'templates', 'slides')
-  : join(__dirname, '../../resources/templates/slides')
+  : join(app.getAppPath(), 'resources', 'templates', 'slides')
 
 // Per-directory HTTP servers for slides preview: dir -> { server, port }
 const slidesServers = new Map<string, { port: number; server: ReturnType<typeof createHttpServer> }>()
@@ -462,7 +469,8 @@ ipcMain.handle('new-slides', async (event) => {
     const content = await readFile(join(slidesTemplateDir, 'slides-template.md'), 'utf-8')
     win.webContents.send('new-slides-content', content)
     return true
-  } catch {
+  } catch (err) {
+    console.error('[new-slides] Failed to load template:', err)
     return null
   }
 })
@@ -486,7 +494,8 @@ ipcMain.handle('open-as-slides', async (event, content?: string) => {
       await copyFile(join(slidesTemplateDir, 'slides-template.md'), result.filePath)
       loadFileInWindow(win, result.filePath)
       state.filePath = result.filePath
-    } catch {
+    } catch (err) {
+      console.error('[open-as-slides] Failed to copy template:', err)
       return false
     }
   }
@@ -495,7 +504,9 @@ ipcMain.handle('open-as-slides', async (event, content?: string) => {
   if (content !== undefined && state.filePath) {
     try {
       await writeFile(state.filePath, content, 'utf-8')
-    } catch { /* best effort */ }
+    } catch (err) {
+      console.error('[open-as-slides] Failed to auto-save content:', err)
+    }
   }
 
   const dir = dirname(state.filePath)
@@ -505,7 +516,8 @@ ipcMain.handle('open-as-slides', async (event, content?: string) => {
   const templateDest = join(dir, 'template.html')
   try {
     await copyFile(join(slidesTemplateDir, 'template.html'), templateDest)
-  } catch {
+  } catch (err) {
+    console.error('[open-as-slides] Failed to copy template.html:', err)
     return false
   }
 
@@ -516,14 +528,17 @@ ipcMain.handle('open-as-slides', async (event, content?: string) => {
       let html = await readFile(templateDest, 'utf-8')
       html = html.replace(/fetch\('slides\.md'\)/, `fetch('${mdName}')`)
       await writeFile(templateDest, html, 'utf-8')
-    } catch { /* best effort */ }
+    } catch (err) {
+      console.error('[open-as-slides] Failed to patch template.html reference:', err)
+    }
   }
 
   try {
     const port = await getOrCreateSlidesServer(dir)
     shell.openExternal(`http://127.0.0.1:${port}/template.html`)
     return true
-  } catch {
+  } catch (err) {
+    console.error('[open-as-slides] Failed to start server:', err)
     return false
   }
 })
@@ -628,7 +643,7 @@ ipcMain.handle('load-custom-theme', async (event) => {
   try {
     const srcPath = result.filePaths[0]
     const fileName = basename(srcPath)
-    const destPath = join(themesDir, fileName)
+    const destPath = join(getThemesDir(), fileName)
     await copyFile(srcPath, destPath)
     const css = await readFile(destPath, 'utf-8')
     buildMenu() // rebuild menu to include new theme
@@ -640,7 +655,7 @@ ipcMain.handle('load-custom-theme', async (event) => {
 
 ipcMain.handle('load-theme-css', async (_event, fileName: string) => {
   try {
-    return await readFile(join(themesDir, fileName), 'utf-8')
+    return await readFile(join(getThemesDir(), fileName), 'utf-8')
   } catch {
     return null
   }
@@ -663,16 +678,18 @@ function buildMenu(): void {
   // Scan custom themes synchronously for menu building
   const customThemeItems: Electron.MenuItemConstructorOptions[] = []
   try {
-    const files = readdirSync(themesDir).filter((f: string) => f.endsWith('.css')).sort()
+    const files = readdirSync(getThemesDir()).filter((f: string) => f.endsWith('.css')).sort()
     for (const file of files) {
       customThemeItems.push({
         label: file.replace(/\.css$/, ''),
         click: async () => {
           try {
-            const css = await readFile(join(themesDir, file), 'utf-8')
+            const css = await readFile(join(getThemesDir(), file), 'utf-8')
             sendToFocused('set-theme', `custom:${file}`)
             sendToFocused('set-custom-css', css)
-          } catch { /* ignore */ }
+          } catch (err) {
+            console.error(`[theme-menu] Failed to read theme "${file}":`, err)
+          }
         }
       })
     }

@@ -41,6 +41,44 @@ function getContent(): string {
   return getMarkdown()
 }
 
+// Browser-mode stub when running outside Electron (e.g. Vite dev server)
+if (!window.electronAPI) {
+  const noop = (): void => {}
+  const stub = {
+    openFile: async () => null,
+    openFilePath: async () => null,
+    saveFile: async () => false,
+    saveFileAs: async () => false,
+    exportPDF: async () => false,
+    exportHTML: async () => false,
+    newSlides: async () => null,
+    openAsSlides: async () => false,
+    loadCustomTheme: async () => null,
+    loadThemeCSS: async () => null,
+    getPathForFile: () => '',
+    openExternal: noop,
+    onFileChanged: noop,
+    onNewFile: noop,
+    onFileOpened: noop,
+    onMenuOpen: noop,
+    onMenuSave: noop,
+    onMenuSaveAs: noop,
+    onMenuExportPDF: noop,
+    onMenuExportHTML: noop,
+    onMenuNewSlides: noop,
+    onMenuOpenAsSlides: noop,
+    onNewSlidesContent: noop,
+    onSetTheme: noop,
+    onSetCustomCSS: noop,
+    exportSlides: async () => false,
+    onMenuExportSlides: noop,
+    onMenuImportTheme: noop,
+    onAgentActivity: noop,
+  }
+  // @ts-ignore
+  window.electronAPI = stub
+}
+
 async function init(): Promise<void> {
   const api = window.electronAPI
   const savedTheme = loadSavedTheme()
