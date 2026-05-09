@@ -149,6 +149,17 @@ ColaMD supports custom CSS themes. Download themes from the [`themes/`](themes/)
 
 Imported themes are saved to `~/.colamd/themes/` and persist across sessions.
 
+## Browser Dev Mode
+
+ColaMD can run in a browser via Vite dev server — useful for testing the editor UI on systems where Electron can't run (e.g. Windows 10 LTSC).
+
+```bash
+cd src/renderer
+npx vite --host 0.0.0.0
+```
+
+Open `http://localhost:5173/` in any browser. An `electronAPI` stub is automatically injected, allowing the Milkdown editor to render fully. File I/O, export, and slides features are unavailable in browser mode.
+
 ## Development
 
 ```bash
@@ -165,6 +176,14 @@ npm run dist:mac
 npm run dist:win
 npm run dist:linux
 ```
+
+### Windows 10 LTSC Notes
+
+Electron's browser process may fail to initialize on Windows 10 Enterprise LTSC (build 19044) due to `process.activateUvLoop` not being available. This is a system-level incompatibility.
+
+**Workarounds:**
+- Use **Browser Dev Mode** (above) for UI testing — the editor and themes work fully
+- Build a portable zip (`npm run dist:win`) and run `ColaMD.exe` on a non-LTSC Windows machine
 
 ### Tech Stack
 
